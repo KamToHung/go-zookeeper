@@ -39,21 +39,47 @@ func NewIntegrationTestServer(t *testing.T, configPath string, stdout, stderr io
 	// allow external systems to configure this zk server bin path.
 	zkPath := os.Getenv("ZOOKEEPER_BIN_PATH")
 	if zkPath == "" {
-		// default to a static reletive path that can be setup with a build system
+		// default to a static relative path that can be setup with a build system
 		zkPath = "zookeeper/bin"
 	}
+
+	if !filepath.IsAbs(zkPath) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("zk: could not get working directory: %v", err)
+		}
+		zkPath = filepath.Join(wd, zkPath)
+	}
+	zkPath = filepath.Clean(zkPath)
+
 	if _, err := os.Stat(zkPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("zk: could not find testing zookeeper bin path at %q: %v ", zkPath, err)
+			return nil, fmt.Errorf("zk: could not find testing zookeeper bin path at %q: %v", zkPath, err)
 		}
+		return nil, fmt.Errorf("zk: could not stat zookeeper bin path at %q: %v", zkPath, err)
 	}
+
+	// Ensure the zkServer.sh script exists and is executable
+	cmdPath := filepath.Join(zkPath, "zkServer.sh")
+	fileInfo, err := os.Stat(cmdPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("zk: could not find zkServer.sh at %q: %v", cmdPath, err)
+		}
+		return nil, fmt.Errorf("zk: could not stat zkServer.sh at %q: %v", cmdPath, err)
+	}
+
+	if fileInfo.Mode()&0111 == 0 {
+		return nil, fmt.Errorf("zk: zkServer.sh at %q is not executable", cmdPath)
+	}
+
 	// password is 'test'
 	superString := `SERVER_JVMFLAGS=-Dzookeeper.DigestAuthenticationProvider.superDigest=super:D/InIHSb7yEEbrWz8b9l71RjZJU=`
 	// enable TTL
 	superString += ` -Dzookeeper.extendedTypesEnabled=true -Dzookeeper.emulate353TTLNodes=true`
 
 	return &server{
-		cmdString: filepath.Join(zkPath, "zkServer.sh"),
+		cmdString: cmdPath,
 		cmdArgs:   []string{"start-foreground", configPath},
 		cmdEnv:    []string{superString},
 		stdout:    stdout, stderr: stderr,
