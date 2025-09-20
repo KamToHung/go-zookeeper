@@ -15,21 +15,27 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+const (
+	_testConfigName   = "zoo.cfg"
+	_testMyIDFileName = "myid"
+)
+
 type TestServer struct {
-	Port int
-	Path string
-	Srv  *Server
+	Port   int
+	Path   string
+	Srv    *Server
+	Config ServerConfigServer
 }
 
 type TestCluster struct {
 	Path    string
+	Config  ServerConfig
 	Servers []TestServer
 }
 
 type options struct {
 	retryTimes int
 }
-
 
 type option func(*options)
 
@@ -40,7 +46,7 @@ func WithRetryTimes(t int) option {
 	}
 }
 
-//StartTestCluster start zk cluster
+// StartTestCluster start zk cluster
 func StartTestCluster(size int, stdout, stderr io.Writer, opts ...option) (*TestCluster, error) {
 	tmpPath, err := ioutil.TempDir("", "gozk")
 	if err != nil {
