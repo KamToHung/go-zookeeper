@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -73,6 +74,21 @@ func NewIntegrationTestServer(t *testing.T, configPath string, stdout, stderr io
 		return nil, fmt.Errorf("zk: zkServer.sh at %q is not executable", cmdPath)
 	}
 
+	// Validate configPath to prevent command injection
+	if configPath != "" {
+		if filepath.IsAbs(configPath) {
+			if _, err := os.Stat(configPath); err != nil {
+				return nil, fmt.Errorf("zk: config path %q is invalid: %v", configPath, err)
+			}
+		} else {
+			// If it's a relative path, clean it to prevent directory traversal
+			cleanedPath := filepath.Clean(configPath)
+			if strings.Contains(cleanedPath, "..") {
+				return nil, fmt.Errorf("zk: config path %q is invalid: must not contain directory traversal", configPath)
+			}
+		}
+	}
+
 	// password is 'test'
 	superString := `SERVER_JVMFLAGS=-Dzookeeper.DigestAuthenticationProvider.superDigest=super:D/InIHSb7yEEbrWz8b9l71RjZJU=`
 	// enable TTL
@@ -99,8 +115,15 @@ func (srv *server) Start() error {
 }
 
 func (srv *server) Stop() error {
-	srv.cancelFunc()
-	return srv.cmd.Wait()
+	if srv.cancelFunc != nil {
+		srv.cancelFunc()
+	}
+
+	if srv.cmd != nil {
+		return srv.cmd.Wait()
+	}
+
+	return nil
 }
 
 type ServerConfigServer struct {
@@ -179,19 +202,19 @@ func (sc ServerConfig) Marshall(w io.Writer) error {
 
 // this is a helper to wait for the zk connection to at least get to the HasSession state
 func waitForSession(ctx context.Context, eventChan <-chan Event) error {
-	select {
-	case event, ok := <-eventChan:
-		// The eventChan is used solely to determine when the ZK conn has
-		// stopped.
-		if !ok {
-			return fmt.Errorf("connection closed before state reached")
+	for {
+		select {
+		case event, ok := <-eventChan:
+			// The eventChan is used solely to determine when the ZK conn has
+			// stopped.
+			if !ok {
+				return fmt.Errorf("connection closed before state reached")
+			}
+			if event.State == StateHasSession {
+				return nil
+			}
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-		if event.State == StateHasSession {
-			return nil
-		}
-	case <-ctx.Done():
-		return ctx.Err()
 	}
-
-	return nil
 }
