@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -625,9 +624,9 @@ func (c *Conn) notifyWatches(ev Event) {
 	for _, t := range wTypes {
 		wpt := WatchPathType{ev.Path, t}
 		if watchers := c.watchers[wpt]; len(watchers) > 0 {
-			for _, ch := range watchers {
-				ch <- ev
-				close(ch)
+			for w := range watchers {
+				w.EvtCh <- ev
+				close(w.EvtCh)
 			}
 			delete(c.watchers, wpt)
 		}

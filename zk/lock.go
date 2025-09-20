@@ -134,7 +134,7 @@ func (l *Lock) LockWithData(data []byte) error {
 			continue
 		}
 
-		ev := <-ch
+		ev := <-ch.EvtCh
 		if ev.Err != nil {
 			return ev.Err
 		}
